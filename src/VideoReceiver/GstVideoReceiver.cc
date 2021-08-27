@@ -705,6 +705,7 @@ GstVideoReceiver::_makeSource(const QString& uri)
     GstElement* bin     = nullptr;
     GstElement* srcbin  = nullptr;
 
+    qCDebug(VideoReceiverLog) << "Streaming uri" << uri << "printable" << qPrintable(uri); 
     do {
         QUrl url(uri);
 
@@ -714,7 +715,7 @@ GstVideoReceiver::_makeSource(const QString& uri)
             }
         } else if (isRtsp) {
             if ((source = gst_element_factory_make("rtspsrc", "source")) != nullptr) {
-                g_object_set(static_cast<gpointer>(source), "location", qPrintable(uri), "latency", 17, "udp-reconnect", 1, "timeout", _udpReconnect_us, NULL);
+                g_object_set(static_cast<gpointer>(source), "location", qPrintable(uri), "debug", true, "latency", 17, "udp-reconnect", 1, "timeout", _udpReconnect_us, nullptr);
             }
         } else if(isUdp264 || isUdp265 || isUdpMPEGTS || isTaisync) {
             if ((source = gst_element_factory_make("udpsrc", "source")) != nullptr) {
@@ -851,8 +852,21 @@ GstVideoReceiver::_makeDecoder(GstCaps* caps, GstElement* videoSink)
     GstElement* decoder = nullptr;
 
     do {
+        /**
+         * CUSTOM - using h264 parse and avdec_h264 for PICORAPTOR camera 
+         *  
         if ((decoder = gst_element_factory_make("decodebin3", nullptr)) == nullptr) {
             qCCritical(VideoReceiverLog) << "gst_element_factory_make('decodebin3') failed";
+            break;
+        }
+        */
+
+        if ((decoder = gst_element_factory_make("h264parse", nullptr)) == nullptr) {
+            qCCritical(VideoReceiverLog) << "gst_element_factory_make('h264parse') failed";
+            break;
+        }
+        if ((decoder = gst_element_factory_make("avdec_h264", nullptr)) == nullptr) {
+            qCCritical(VideoReceiverLog) << "gst_element_factory_make('avdec_h264') failed";
             break;
         }
     } while(0);
@@ -1005,6 +1019,7 @@ GstVideoReceiver::_addDecoder(GstElement* src)
     }
 
     GstCaps* caps;
+    // caps = nullptr;
 
     if ((caps = gst_pad_query_caps(srcpad, nullptr)) == nullptr) {
         qCCritical(VideoReceiverLog) << "gst_pad_query_caps() failed";
@@ -1401,6 +1416,33 @@ GstVideoReceiver::_wrapWithGhostPad(GstElement* element, GstPad* pad, gpointer d
 void
 GstVideoReceiver::_linkPad(GstElement* element, GstPad* pad, gpointer data)
 {
+
+    /* CUSTOM: RTSP handling */
+    // bool is_video = true;
+
+    // GstCaps* filter = gst_caps_from_string("application/x-rtp, media=(string)video");
+
+    // if (filter != nullptr) {
+    //     GstCaps* caps = gst_pad_query_caps(pad, nullptr);
+
+    //     if (caps != nullptr) {
+    //         if (!gst_caps_is_any(caps) && !gst_caps_can_intersect(caps, filter)) {
+    //             is_video = false;
+    //         }
+
+    //         gst_caps_unref(caps);
+    //         caps = nullptr;
+    //     }
+
+    //     gst_caps_unref(filter);
+    //     filter = nullptr;
+    // }
+
+    // if (!is_video) {
+    //     return;
+    // }
+    /* END CUSTOM */
+
     gchar* name;
 
     if ((name = gst_pad_get_name(pad)) != nullptr) {
@@ -1472,27 +1514,27 @@ GstVideoReceiver::_videoSinkProbe(GstPad* pad, GstPadProbeInfo* info, gpointer u
             pThis->_resetVideoSink = false;
 
 // FIXME: AV: this makes MPEG2-TS playing smooth but breaks RTSP
-//            gst_pad_send_event(pad, gst_event_new_flush_start());
-//            gst_pad_send_event(pad, gst_event_new_flush_stop(TRUE));
+        //    gst_pad_send_event(pad, gst_event_new_flush_start());
+        //    gst_pad_send_event(pad, gst_event_new_flush_stop(TRUE));
 
-//            GstBuffer* buf;
+        //    GstBuffer* buf;
 
-//            if ((buf = gst_pad_probe_info_get_buffer(info)) != nullptr) {
-//                GstSegment* seg;
+        //    if ((buf = gst_pad_probe_info_get_buffer(info)) != nullptr) {
+        //        GstSegment* seg;
 
-//                if ((seg = gst_segment_new()) != nullptr) {
-//                    gst_segment_init(seg, GST_FORMAT_TIME);
+        //        if ((seg = gst_segment_new()) != nullptr) {
+        //            gst_segment_init(seg, GST_FORMAT_TIME);
 
-//                    seg->start = buf->pts;
+        //            seg->start = buf->pts;
 
-//                    gst_pad_send_event(pad, gst_event_new_segment(seg));
+        //            gst_pad_send_event(pad, gst_event_new_segment(seg));
 
-//                    gst_segment_free(seg);
-//                    seg = nullptr;
-//                }
+        //            gst_segment_free(seg);
+        //            seg = nullptr;
+        //        }
 
-//                gst_pad_set_offset(pad, -static_cast<gint64>(buf->pts));
-//            }
+        //        gst_pad_set_offset(pad, -static_cast<gint64>(buf->pts));
+        //    }
         }
 
         pThis->_noteVideoSinkFrame();

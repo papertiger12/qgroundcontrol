@@ -70,6 +70,8 @@ LinuxBuild {
     } else {
         GST_ROOT = $$PWD/../../gstreamer-1.0-android-universal-1.18.1/x86
     }
+
+    message($$GST_ROOT);
     exists($$GST_ROOT) {
         QMAKE_CXXFLAGS  += -pthread
         CONFIG          += VideoEnabled
