@@ -97,7 +97,7 @@ GstVideoReceiver::start(const QString& uri, unsigned timeout, int buffer)
     _timeout = timeout;
     _buffer = buffer;
 
-    qCDebug(VideoReceiverLog) << "Starting" << _uri << ", buffer" << _buffer;
+    qCDebug(VideoReceiverLog) << "Starting" << _uri << ", buffer" << _buffer << ", timeout" << _timeout;
 
     _endOfStream = false;
 
@@ -638,8 +638,9 @@ GstVideoReceiver::_watchdog(void)
             _lastSourceFrameTime = now;
         }
 
-        if (now - _lastSourceFrameTime > _timeout) {
-            qCDebug(VideoReceiverLog) << "Stream timeout, no frames for " << now - _lastSourceFrameTime << "" << _uri;
+        /* CUSTOM - multiple _timeout by 5 for udp timeout handling */
+        if (now - _lastSourceFrameTime > _timeout * 10) {
+            qCDebug(VideoReceiverLog) << "Stream timeout, no frames for " << now - _lastSourceFrameTime << ", timeout" << _timeout << "" << _uri;
             _dispatchSignal([this](){
                 emit timeout();
             });
@@ -705,9 +706,10 @@ GstVideoReceiver::_makeSource(const QString& uri)
     GstElement* bin     = nullptr;
     GstElement* srcbin  = nullptr;
 
-    qCDebug(VideoReceiverLog) << "Streaming uri" << uri << "printable" << qPrintable(uri); 
     do {
         QUrl url(uri);
+
+        qCDebug(VideoReceiverLog) << "Streaming uri" << uri << "printable" << qPrintable(uri); 
 
         if(isTcpMPEGTS) {
             if ((source = gst_element_factory_make("tcpclientsrc", "source")) != nullptr) {
