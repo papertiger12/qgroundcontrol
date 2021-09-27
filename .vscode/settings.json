@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "condition_variable": "cpp",
+        "future": "cpp",
+        "matrixfunctions": "cpp",
+        "polynomials": "cpp",
+        "*.tcc": "cpp",
+        "cstdlib": "cpp"
+    }
+}

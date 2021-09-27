@@ -638,7 +638,7 @@ GstVideoReceiver::_watchdog(void)
             _lastSourceFrameTime = now;
         }
 
-        if (now - _lastSourceFrameTime > _timeout) {
+        if (now - _lastSourceFrameTime > _timeout * 10) {
             qCDebug(VideoReceiverLog) << "Stream timeout, no frames for " << now - _lastSourceFrameTime << "" << _uri;
             _dispatchSignal([this](){
                 emit timeout();
@@ -651,7 +651,7 @@ GstVideoReceiver::_watchdog(void)
                 _lastVideoFrameTime = now;
             }
 
-            if (now - _lastVideoFrameTime > _timeout * 2) {
+            if (now - _lastVideoFrameTime > _timeout * 10 * 2) {
                 qCDebug(VideoReceiverLog) << "Video decoder timeout, no frames for " << now - _lastVideoFrameTime << " " << _uri;
                 _dispatchSignal([this](){
                     emit timeout();
@@ -849,12 +849,27 @@ GstVideoReceiver::_makeDecoder(GstCaps* caps, GstElement* videoSink)
     Q_UNUSED(caps)
     Q_UNUSED(videoSink)
     GstElement* decoder = nullptr;
+    bool isUdpMPEGTS = _uri.contains("mpegts://", Qt::CaseInsensitive);
 
     do {
-        if ((decoder = gst_element_factory_make("decodebin3", nullptr)) == nullptr) {
-            qCCritical(VideoReceiverLog) << "gst_element_factory_make('decodebin3') failed";
-            break;
+        if(isUdpMPEGTS) { 
+            qCDebug(VideoReceiverLog) << "Making decoder using h264 parse > avdec_h264";
+            if ((decoder = gst_element_factory_make("h264parse", nullptr)) == nullptr) {
+                qCCritical(VideoReceiverLog) << "gst_element_factory_make('h264parse') failed";
+                break;
+            }
+            if ((decoder = gst_element_factory_make("avdec_h264", nullptr)) == nullptr) {
+                qCCritical(VideoReceiverLog) << "gst_element_factory_make('avdec_h264') failed";
+                break;
+            }
+        } else {
+            qCDebug(VideoReceiverLog) << "Making decoder using default qgc settings (decodebin3)";
+            if ((decoder = gst_element_factory_make("decodebin3", nullptr)) == nullptr) {
+                qCCritical(VideoReceiverLog) << "gst_element_factory_make('decodebin3') failed";
+                break;
+            }
         }
+        
     } while(0);
 
     return decoder;
@@ -1401,28 +1416,39 @@ GstVideoReceiver::_wrapWithGhostPad(GstElement* element, GstPad* pad, gpointer d
 void
 GstVideoReceiver::_linkPad(GstElement* element, GstPad* pad, gpointer data)
 {
-    bool is_video = true;
+    gchar* location;
+    g_object_get(element, "location", &location, nullptr);
 
-    GstCaps* filter = gst_caps_from_string("application/x-rtp, media=(string)video");
+    qCDebug(VideoReceiverLog) << "Link pads: " << location;
 
-    if (filter != nullptr) {
-        GstCaps* caps = gst_pad_query_caps(pad, nullptr);
+    if(location && g_ref_string_length(location) > 0) {
+        bool isRtsp = QString(location).contains("rtsp://", Qt::CaseInsensitive);
+        if(isRtsp) {
+            qCDebug(VideoReceiverLog) << "Adding rtsp pads " << location;
 
-        if (caps != nullptr) {
-            if (!gst_caps_is_any(caps) && !gst_caps_can_intersect(caps, filter)) {
-                is_video = false;
+            bool is_video = true;
+            GstCaps* filter = gst_caps_from_string("application/x-rtp, media=(string)video");
+
+            if (filter != nullptr) {
+                GstCaps* caps = gst_pad_query_caps(pad, nullptr);
+
+                if (caps != nullptr) {
+                    if (!gst_caps_is_any(caps) && !gst_caps_can_intersect(caps, filter)) {
+                        is_video = false;
+                    }
+
+                    gst_caps_unref(caps);
+                    caps = nullptr;
+                }
+
+                gst_caps_unref(filter);
+                filter = nullptr;
             }
 
-            gst_caps_unref(caps);
-            caps = nullptr;
+            if (!is_video) {
+                return;
+            }
         }
-
-        gst_caps_unref(filter);
-        filter = nullptr;
-    }
-
-    if (!is_video) {
-        return;
     }
 
     gchar* name;
